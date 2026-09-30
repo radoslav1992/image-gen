@@ -1,0 +1,18 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL,password_hash TEXT NOT NULL,credits INTEGER NOT NULL DEFAULT 0 CHECK(credits>=0),plan TEXT NOT NULL DEFAULT 'free',storage_limit INTEGER NOT NULL DEFAULT 100000000,storage_used INTEGER NOT NULL DEFAULT 0 CHECK(storage_used>=0),storage_reserved INTEGER NOT NULL DEFAULT 0 CHECK(storage_reserved>=0),stripe_customer TEXT UNIQUE,stripe_subscription TEXT UNIQUE,period_end INTEGER,subscription_status TEXT,created_at INTEGER NOT NULL);
+CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL);
+CREATE INDEX sessions_expiry ON sessions(expires_at);
+CREATE TABLE reset_tokens(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL);
+CREATE TABLE rate_limits(key TEXT NOT NULL,bucket INTEGER NOT NULL,hits INTEGER NOT NULL,expires_at INTEGER NOT NULL,PRIMARY KEY(key,bucket));
+CREATE INDEX rate_limits_expiry ON rate_limits(expires_at);
+CREATE INDEX users_expiry ON users(period_end);
+CREATE TABLE images(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,request_key TEXT NOT NULL,prompt TEXT NOT NULL,style TEXT NOT NULL,model TEXT NOT NULL,cost INTEGER NOT NULL,reserved_bytes INTEGER NOT NULL DEFAULT 5000000,bytes INTEGER NOT NULL DEFAULT 0,key TEXT NOT NULL,mime TEXT NOT NULL DEFAULT 'image/jpeg',status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN('pending','complete','failed','deleted')),favorite INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(user_id,request_key));
+CREATE INDEX images_user_created ON images(user_id,created_at DESC);
+CREATE INDEX images_pending ON images(status,created_at);
+CREATE TRIGGER reserve_image AFTER INSERT ON images BEGIN UPDATE users SET credits=credits-NEW.cost,storage_reserved=storage_reserved+NEW.reserved_bytes WHERE id=NEW.user_id; END;
+CREATE TRIGGER fail_image AFTER UPDATE OF status ON images WHEN OLD.status='pending' AND NEW.status='failed' BEGIN UPDATE users SET credits=credits+OLD.cost,storage_reserved=storage_reserved-OLD.reserved_bytes WHERE id=OLD.user_id; END;
+CREATE TRIGGER complete_image AFTER UPDATE OF status ON images WHEN OLD.status='pending' AND NEW.status='complete' BEGIN UPDATE users SET storage_reserved=storage_reserved-OLD.reserved_bytes,storage_used=storage_used+NEW.bytes WHERE id=OLD.user_id; END;
+CREATE TRIGGER delete_image AFTER UPDATE OF status ON images WHEN OLD.status='complete' AND NEW.status='deleted' BEGIN UPDATE users SET storage_used=storage_used-OLD.bytes WHERE id=OLD.user_id; END;
+CREATE TABLE stripe_events(id TEXT PRIMARY KEY,created_at INTEGER NOT NULL);
+CREATE TABLE paid_invoices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),plan TEXT NOT NULL,credits INTEGER NOT NULL,created_at INTEGER NOT NULL,period_end INTEGER NOT NULL,UNIQUE(user_id,period_end));
+CREATE TRIGGER grant_invoice AFTER INSERT ON paid_invoices BEGIN UPDATE users SET credits=MAX(0,NEW.credits-(SELECT COALESCE(SUM(cost),0) FROM images WHERE user_id=NEW.user_id AND status='pending')) WHERE id=NEW.user_id; END;

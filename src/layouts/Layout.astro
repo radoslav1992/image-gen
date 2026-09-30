@@ -1,0 +1,12 @@
+---
+import '../styles/app.css';
+const {title='Образ — вашите идеи, във фокус',app=false,user=null}=Astro.props;
+const path=Astro.url.pathname;
+---
+<!doctype html><html lang="bg"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="description" content="Превърнете идеите си в изображения с Образ. AI студио на български с лична библиотека и ясен кредитен баланс."/><title>{title}</title><link rel="stylesheet" href="/template/main.css"/><link rel="icon" href="/favicon.svg"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></head>
+<body class:list={[app?'app-body':'']}><header class="header"><a href="/" class="brand"><span class="brand-mark">✳</span>образ<span class="brand-dot">.</span></a><nav aria-label="Основна навигация"><a class:list={[path==='/studio'&&'active']} href="/studio">Студио</a><a class:list={[path==='/library'&&'active']} href="/library">Библиотека</a><a class:list={[path==='/pricing'&&'active']} href="/pricing">Планове</a></nav><div class="header-end">{user?<a class="button small dark" href="/account">{user.credits.toLocaleString('bg-BG')} кредита <span class="avatar">{user.name[0]}</span></a>:<><a href="/login" class="login-link">Вход</a><a class="button small" href="/register">Създай профил ↗</a></>}</div></header>
+<main><slot/></main><footer><a class="brand" href="/">образ.</a><span>От въображението до изображението.</span><div><a href="/terms">Условия</a><a href="/privacy">Поверителност</a></div><small>© {new Date().getFullYear()} Образ</small></footer><div id="toast" role="status" aria-live="polite"></div>
+<script>
+ document.querySelectorAll('[data-logout]').forEach(b=>b.addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});location.href='/';}));
+ const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');observer.unobserve(e.target)}}),{threshold:.1});document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));
+</script></body></html>

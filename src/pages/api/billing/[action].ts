@@ -1,0 +1,11 @@
+import {endpoint,sameOrigin,bindings,requireUser,body,fail,json,now,limit} from '../../../lib/server';
+import {PLANS,type PlanKey} from '../../../lib/catalog';
+import {stripe,priceFor} from '../../../lib/stripe';
+export const POST=endpoint(async ctx=>{sameOrigin(ctx.request);const u=await requireUser(ctx);await limit(`billing:${u.id}`,10,300);const e=bindings();if(e.BILLING_ENABLED!=='true'||!e.SITE_URL)fail(503,'Абонаментите ще бъдат достъпни скоро.');const origin=new URL(e.SITE_URL).origin;
+ if(ctx.params.action==='portal'){if(!u.stripe_customer)fail(400,'Все още нямате абонамент.');const s=await stripe('billing_portal/sessions',{customer:u.stripe_customer,return_url:`${origin}/account`});return json({url:s.url});}
+ if(ctx.params.action!=='checkout')fail(404,'Страницата не е намерена.');const d=await body(ctx.request);const plan=String(d.plan||'') as PlanKey;if(!Object.hasOwn(PLANS,plan))fail(400,'Изберете план.');const price=priceFor(plan);if(!price)fail(503,'Планът още не е активен.');
+ let customer=u.stripe_customer;if(!customer){const c=await stripe('customers',{email:u.email,name:u.name,'metadata[user_id]':u.id},`customer-${u.id}`);customer=c.id;await e.DB.prepare('UPDATE users SET stripe_customer=? WHERE id=? AND stripe_customer IS NULL').bind(customer,u.id).run();}
+ const subscriptions=await stripe(`subscriptions?customer=${encodeURIComponent(customer!)}&status=all&limit=100`);if(subscriptions.data.some((s:any)=>['active','trialing','past_due','unpaid','incomplete','paused'].includes(s.status)))fail(409,'Вече имате абонамент. Управлявайте го от профила си.');
+ // One open Checkout per customer, independent of requested plan, avoids double subscriptions.
+ const open=await stripe(`checkout/sessions?customer=${encodeURIComponent(customer!)}&status=open&limit=10`);const existing=open.data.find((s:any)=>s.mode==='subscription');if(existing)return json({url:existing.url});
+ const s=await stripe('checkout/sessions',{mode:'subscription',customer:customer!,'line_items[0][price]':price,'line_items[0][quantity]':'1',success_url:`${origin}/account?payment=success`,cancel_url:`${origin}/pricing?payment=cancelled`,client_reference_id:u.id,'subscription_data[metadata][user_id]':u.id,'metadata[user_id]':u.id},`checkout-${u.id}-${Math.floor(now()/3600)}`);return json({url:s.url});});
