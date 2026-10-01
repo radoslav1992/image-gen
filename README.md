@@ -27,9 +27,9 @@ Astro + Cloudflare Workers AI + D1 + private R2. Тъмната/оранжева
 | Deploy command | `npx wrangler deploy` |
 | Node version | `24` (build variable `NODE_VERSION=24`) |
 
-Wrangler е фиксиран в lockfile. Конфигурацията описва AI, D1 `DB` и R2 `IMAGES`. Актуалният Wrangler може автоматично да създаде и свърже D1/R2, ако липсват IDs; разрешете provisioning при първия деплой. Нужно е активирано R2 и Workers Paid за зададения CPU лимит и платени AI заявки. След първия deploy D1 е празна — изпълнете миграцията преди регистрация.
+Wrangler е фиксиран в lockfile. Конфигурацията свързва AI, съществуващата D1 база `image-gen-bg` (ID `8f514fc3-16a6-40c3-aea9-16bbcb0096dd`) като `DB` и R2 bucket `image-gen-objects` като `IMAGES`. Деплойвайте в Cloudflare акаунта, в който се намират тези ресурси. Нужно е активирано R2 и Workers Paid за зададения CPU лимит и платени AI заявки. Свързването не създава таблици — изпълнете миграцията преди регистрация.
 
-3. D1 → база `image-gen` → Console: изпълнете **целия** файл `migrations/0001_initial.sql`. Алтернативно локално: `npm ci`, `npm run db:remote` след създаване на базата. Ако автоматичното свързване не е налично във вашия акаунт, създайте D1 `image-gen` и R2 `image-gen-images` ръчно, добавете реалния D1 `database_id` в `wrangler.jsonc` и деплойнете отново.
+3. D1 → база `image-gen-bg` → Console: изпълнете **целия** файл `migrations/0001_initial.sql`, ако схемата още не е приложена. Алтернативно локално: `npm ci`, `npm run db:remote`. Не създавайте допълнителна база или bucket — конфигурацията вече сочи предоставените ресурси.
 4. Попълнете настройките в `wrangler.jsonc` (GitHub редактор е достатъчен), след което направете commit. Cloudflare е source of truth за тайните. За обикновените variables използвайте **конфигурацията**, защото следващ deploy може да презапише стойности, въведени само в dashboard.
 
 | Variable | Стойност / предназначение |
