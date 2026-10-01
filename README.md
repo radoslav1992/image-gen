@@ -4,7 +4,7 @@ Astro + Cloudflare Workers AI + D1 + private R2. Тъмната/оранжева
 
 ## Какво работи
 
-- Регистрация, вход, изход, D1 сесии с HttpOnly cookies; PBKDF2 пароли с отделен salt; Turnstile защита на регистрация и забравена парола.
+- Регистрация, вход, изход, D1 сесии с HttpOnly cookies; PBKDF2 пароли с отделен salt; Turnstile защита на регистрация и забравена парола при конфигурирани ключове. Без ключове регистрацията работи с IP/email rate limits и без безплатни AI кредити.
 - Възстановяване на парола чрез Resend, еднократен линк за 30 минути и отмяна на старите сесии.
 - 11 модела чрез AI binding: FLUX.1 Schnell, FLUX.2 Klein 4B/9B; GPT Image 2.5 Sunburst/Flare, Seedream 5 Pro, Grok Imagine Image 2.0, Recraft V4 SVG / Pro SVG, Nano Banana Pro / 2. Осемте модела от снимките използват Cloudflare Unified Billing, без отделни provider keys.
 - Кредити и ограничено място, атомарни резервации, idempotency на заявки, връщане на кредити при грешка, до 2 едновременни заявки на потребител.
@@ -39,7 +39,7 @@ Wrangler е фиксиран в lockfile. Конфигурацията свър�
 | `IMAGE_RESULT_HOSTS` | Разрешени HTTPS result hosts, разделени със запетая; по подразбиране `examples.aig.cloudflare.com,*.r2.dev` |
 | `REGISTRATION_ENABLED` | `true` |
 | `BILLING_ENABLED` | `false` до завършен тест на Stripe; после `true` |
-| `TURNSTILE_SITE_KEY` | Публичен ключ за production hostname |
+| `TURNSTILE_SITE_KEY` | Незадължителен публичен ключ за production hostname; добавете заедно с `TURNSTILE_SECRET_KEY` |
 | `CONTACT_EMAIL` | Вашият реален имейл за поддръжка и лични данни |
 | `STRIPE_PRICE_START` | Stripe месечна EUR price за €5.90 |
 | `STRIPE_PRICE_CREATOR` | Stripe месечна EUR price за €14.90 |
@@ -49,7 +49,7 @@ Secrets: Cloudflare → Worker → Settings → Variables and Secrets → Add (E
 
 | Secret | Кога е нужен |
 |---|---|
-| `TURNSTILE_SECRET_KEY` | Задължителен за публична регистрация |
+| `TURNSTILE_SECRET_KEY` | Задължителен, когато е настроен Turnstile site key |
 | `STRIPE_SECRET_KEY` | За Checkout / Portal / webhook sync |
 | `STRIPE_WEBHOOK_SECRET` | За проверка на подписа |
 | `RESEND_API_KEY` | За възстановяване на парола |
@@ -74,6 +74,14 @@ Secrets: Cloudflare → Worker → Settings → Variables and Secrets → Add (E
 5. Тествайте в test mode: покупка, webhook resend, подновяване, неуспешно плащане, прекратяване и private library между два профила. После заменете **всички** test keys, prices и webhook secret с live стойности.
 6. Цените и калкулацията са в `docs/PRICING.md`. Обновете страниците `terms.astro` и `privacy.astro` с действителните данни на търговеца, контакти, крайни цени/данъчно представяне и приложимите условия преди продажби. Stripe Tax не е активиран автоматично. Refunds/chargebacks изискват операторска обработка и отмяна на права; няма автоматична интеграция за тях в първото издание.
 
+## Ако регистрацията не работи
+
+- След този commit изчакайте успешен Cloudflare deploy и презаредете страницата. При празни Turnstile ключове регистрацията е достъпна с IP/email rate limits. Настроената captcha остава задължителна.
+- Ако е попълнен само един Turnstile ключ, попълнете и другия: публичния site key в `wrangler.jsonc`, secret key в Cloudflare Secrets. Разрешете hostname на сайта в настройките на widget-а. При нужда изчистете и двата ключа, за да използвате регистрацията с rate limits.
+- Ако отговорът е „Възникна проблем“, проверете Worker logs за `no such table` и приложете `migrations/0001_initial.sql` в `image-gen-bg`, ако схемата още липсва. D1 binding сам по себе си не създава таблици.
+- При „Невалиден произход“ проверете `SITE_URL`: точният адрес, от който отваряте сайта, без наклонена черта накрая. Празна стойност използва origin на текущата заявка.
+- Паролата трябва да е 12–128 символа; името 2–80; отметката за условията е задължителна. При повторна регистрация със същия имейл използвайте вход. Ограниченията са 20 заявки на IP и 8 на имейл за 10 минути; изчакайте след много опити.
+
 ## Локално
 
 ```bash
@@ -83,7 +91,7 @@ cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-Публичните страници работят без Stripe secrets. Регистрацията на localhost не изисква Turnstile, ако не е добавен secret. AI binding използва Cloudflare и за реална генерация локално е нужна авторизация към Cloudflare; локалните smoke tests не правят платени AI заявки.
+Публичните страници работят без Stripe secrets. Регистрацията работи на localhost и production с ограничения на заявките, когато и двата Turnstile ключа липсват. Ако добавите един ключ, трябва да добавите и другия; при конфигурирани ключове captcha е задължителна и се проверява на сървъра, включително hostname. Неуспешна проверка не се пропуска. AI binding използва Cloudflare и за реална генерация локално е нужна авторизация към Cloudflare; локалните smoke tests не правят платени AI заявки.
 
 ```bash
 npm run check

@@ -4,13 +4,14 @@ import assert from 'node:assert/strict';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 const files=['dist/server/entry.mjs','dist/server/virtual_astro_middleware.mjs',...readdirSync('dist/server/chunks').map(x=>`dist/server/chunks/${x}`)];
 const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'app',modules:files.map(path=>({type:'ESModule',path:resolve(path)})),compatibilityDate:'2026-09-30',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['IMAGES'],bindings:{SITE_URL:'',BILLING_ENABLED:'false',REGISTRATION_ENABLED:'true'},assets:{directory:'dist/client',binding:'ASSETS',routerConfig:{has_user_worker:true}}}]}));
-const origin='http://localhost';
+// Exercise production HTTPS: localhost previously bypassed the registration blocker.
+const origin='https://image-gen.example';
 async function request(path,method='GET',data,cookie,customOrigin=origin){return mf.dispatchFetch(origin+path,{method,headers:{...(data?{'Content-Type':'application/json',Origin:customOrigin}:{}),...(cookie?{Cookie:cookie}:{})},body:data?JSON.stringify(data):undefined,redirect:'manual'});}
 try{
  const db=await mf.getD1Database('DB');await db.exec(readFileSync('migrations/0001_initial.sql','utf8'));
  for(const path of ['/','/login','/register','/pricing','/terms','/privacy']){const r=await request(path);assert.equal(r.status,200,path);const html=await r.text();assert.ok(html.includes('lang="bg"'));}
  assert.equal((await request('/studio')).status,302);assert.equal((await request('/api/me')).status,401);
- const signup=await request('/api/auth/register','POST',{name:'Тест Потребител',email:'test@example.bg',password:'long-password-for-test',terms:true});assert.equal(signup.status,200,await signup.text());const cookie=signup.headers.get('set-cookie').split(';')[0];assert.ok(signup.headers.get('set-cookie').includes('HttpOnly'));
+ const signup=await request('/api/auth/register','POST',{name:'Тест Потребител',email:'test@example.bg',password:'long-password-for-test',terms:true});assert.equal(signup.status,200,await signup.text());const cookie=signup.headers.get('set-cookie').split(';')[0];assert.ok(signup.headers.get('set-cookie').includes('HttpOnly'));assert.ok(signup.headers.get('set-cookie').includes('Secure'));const created=await db.prepare('SELECT credits FROM users WHERE email=?').bind('test@example.bg').first();assert.equal(created.credits,0);const duplicate=await request('/api/auth/register','POST',{name:'Тест Потребител',email:'test@example.bg',password:'long-password-for-test',terms:true});assert.equal(duplicate.status,409);
  const studio=await request('/studio','GET',undefined,cookie);assert.equal(studio.status,200);assert.ok((await studio.text()).includes('GPT Image 2.5 Sunburst'));assert.equal((await request('/library','GET',undefined,cookie)).status,200);assert.equal((await request('/account','GET',undefined,cookie)).status,200);
  assert.equal((await request('/api/generate','POST',{prompt:'test scene',model:'klein',style:'none',requestKey:'12345678-1234-1234-1234-123456789012'},cookie)).status,402);
  assert.equal((await request('/api/auth/logout','POST',{},cookie,'http://evil.example')).status,403);
